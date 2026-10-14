@@ -31,7 +31,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.7";
+const char firmwareVersion[] = "1.0.8";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -161,6 +161,7 @@ TwoWire &I2C_APDS = I2C_SENSORS;
 void receivedCallback(char *topic, byte *payload, unsigned int length);
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, const Bsec2 bsec);
 void startWiFiSetup();
+static bool isNewerVersion(String candidate, String current);
 void handleUpdatePage();
 void handleUpdateInstall();
 
@@ -728,7 +729,7 @@ void receivedCallback(char *topic, byte *payload, unsigned int length)
     // {"type":"ota","fw_version":"1.0.3","url":"https://host/fw.bin","md5":"<32 hex>"}
     String ver = jsonDocRx["fw_version"] | "";
     String url = jsonDocRx["url"] | "";
-    if (url.length() > 0 && ver != firmwareVersion)
+    if (url.length() > 0 && ver != firmwareVersion && (isNewerVersion(ver, firmwareVersion) || (jsonDocRx["force"] | false)))
     {
       otaVersion = ver;
       otaUrl = url;
