@@ -31,7 +31,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.4";
+const char firmwareVersion[] = "1.0.5";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
