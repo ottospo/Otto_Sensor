@@ -1,4 +1,4 @@
-"""Pops up the Otto Sensor update page on this PC when a device reports UPDATE_AVAILABLE.
+r"""Pops up the Otto Sensor update page on this PC when a device reports UPDATE_AVAILABLE.
 
 Setup:  pip install paho-mqtt
 Run:    set OTTO_MQTT_PASS=<your mqtt password>
@@ -29,6 +29,7 @@ def on_connect(client, userdata, flags, rc, *args):
 def on_message(client, userdata, msg):
     try:
         data = json.loads(msg.payload)
+        print("MQTT state:", data)
     except ValueError:
         return
     if data.get("state") != "UPDATE_AVAILABLE":
