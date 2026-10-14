@@ -1,0 +1,17 @@
+Field,Value
+device_id    , ${device_id}
+imei        ,  ${imei}
+temperature ,  ${temperature}
+humidity   ,   ${humidity}
+co2          , ${co2}
+voc      ,     ${voc}
+red          , ${red}
+green         ,${green}
+blue       ,   ${blue}
+clear_value  , ${clear_value}
+pressure     , ${pressure}
+altitude    ,  ${altitude}
+voltage     ,  ${voltage}
+pwm_freq   ,   ${pwm_freq}
+pwm_duty     , ${pwm_duty}
+power_value  , ${power_value} 
