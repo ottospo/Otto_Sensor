@@ -31,7 +31,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.6";
+const char firmwareVersion[] = "1.0.7";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -464,6 +464,7 @@ void handleWiFiSetupPage()
     "<div class='card'>"
     "<h2>OttoSensor Setup</h2>"
     "<p class='sub'>Configure Wi-Fi and MQTT broker credentials.</p>"
+    "<p class='sub'><b>Note:</b> Connect to Gateway Port at 2.4GHz</p>"
     "<form action='/save' method='POST'>"
     "<label for='ssidSelect'>WiFi network (gateway)</label>"
     "<select id='ssidSelect' name='ssid' required>"
@@ -486,6 +487,7 @@ void handleWiFiSetupPage()
     "<label class='show-pw'><input type='checkbox' id='toggleMqttPw'>Show MQTT password</label>"
     "<button type='submit'>Save &amp; Connect</button>"
     "</form>"
+    "<p style='text-align:center'><a href='/update'>Check firmware update</a></p>"
     "</div>"
     "<script>"
     "var s=document.getElementById('ssidSelect'),t=document.getElementById('customSsid'),p=document.getElementById('pw'),ck=document.getElementById('togglePw'),mp=document.getElementById('mPw'),mck=document.getElementById('toggleMqttPw');"
@@ -1255,8 +1257,8 @@ void DisplayMeasurementData(void)
     Heltec.display->setFont(ArialMT_Plain_10);
     Heltec.display->clear();
     Heltec.display->drawString(0, 0, "Update " + latestVersion);
-    Heltec.display->drawString(0, 10, "Hold PRG to");
-    Heltec.display->drawString(0, 20, "install");
+    Heltec.display->drawString(0, 10, "Open in browser:");
+    Heltec.display->drawString(0, 20, WiFi.localIP().toString());
     Heltec.display->display();
     return;
   }
@@ -1563,24 +1565,6 @@ void loop()
     {
       lastUpdateCheck = millis();
       checkForUpdate();
-    }
-    // PRG button (GPIO0, active low) held ~1 s installs the pending update
-    static uint32_t prgDown = 0;
-    if (updateAvailable && digitalRead(0) == LOW)
-    {
-      if (prgDown == 0) prgDown = millis();
-      if (millis() - prgDown > 1000)
-      {
-        prgDown = 0;
-        otaVersion = latestVersion;
-        otaUrl = latestUrl;
-        otaMd5 = "";
-        otaPending = true;
-      }
-    }
-    else
-    {
-      prgDown = 0;
     }
     if (publishRequested)
     {
