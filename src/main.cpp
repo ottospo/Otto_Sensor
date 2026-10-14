@@ -31,7 +31,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.5";
+const char firmwareVersion[] = "1.0.6";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -161,6 +161,8 @@ TwoWire &I2C_APDS = I2C_SENSORS;
 void receivedCallback(char *topic, byte *payload, unsigned int length);
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, const Bsec2 bsec);
 void startWiFiSetup();
+void handleUpdatePage();
+void handleUpdateInstall();
 
 void get_imei()
 {
@@ -650,6 +652,8 @@ void setup_network()
     // Allow accessing configuration web page directly on local network IP
     wifiServer.on("/", HTTP_GET, handleWiFiSetupPage);
     wifiServer.on("/save", HTTP_POST, handleWiFiSave);
+    wifiServer.on("/update", HTTP_GET, handleUpdatePage);
+    wifiServer.on("/update", HTTP_POST, handleUpdateInstall);
     wifiServer.begin();
     Serial.println("Web configuration server started on local IP");
   }
@@ -671,6 +675,10 @@ bool otaPending = false;
 String otaUrl;
 String otaMd5;
 String otaVersion;
+bool updateAvailable = false;
+bool updateCheckRequested = true;
+String latestVersion;
+String latestUrl;
 StaticJsonDocument<512> jsonDocRx;
 char jsonBufferRx[512];
 
@@ -731,6 +739,22 @@ void receivedCallback(char *topic, byte *payload, unsigned int length)
     }
     return;
   }
+  else if (messageType == "ota_check")
+  {
+    updateCheckRequested = true;
+    return;
+  }
+  else if (messageType == "ota_install")
+  {
+    if (updateAvailable)
+    {
+      otaVersion = latestVersion;
+      otaUrl = latestUrl;
+      otaMd5 = "";
+      otaPending = true;
+    }
+    return;
+  }
   publishRequested = true;
 }
 
@@ -773,6 +797,125 @@ void runOta()
   }
   Serial.println("OTA failed: " + err);
   publishOtaStatus("OTA_FAILED");
+}
+
+static const char UPDATE_REPO[] = "ottospo/Otto_Sensor";
+
+// Compares dotted versions ("1.0.10" > "1.0.9"); a leading 'v' is ignored.
+static bool isNewerVersion(String candidate, String current)
+{
+  if (candidate.startsWith("v") || candidate.startsWith("V")) candidate.remove(0, 1);
+  if (current.startsWith("v") || current.startsWith("V")) current.remove(0, 1);
+  for (int i = 0; i < 3; i++)
+  {
+    int a = candidate.toInt();
+    int b = current.toInt();
+    if (a != b) return a > b;
+    int ia = candidate.indexOf('.');
+    int ib = current.indexOf('.');
+    candidate = ia < 0 ? "0" : candidate.substring(ia + 1);
+    current = ib < 0 ? "0" : current.substring(ib + 1);
+  }
+  return false;
+}
+
+void checkForUpdate()
+{
+  updateCheckRequested = false;
+  if (WiFi.status() != WL_CONNECTED)
+    return;
+
+  WiFiClientSecure secure;
+  secure.setInsecure();
+  HTTPClient h;
+  h.useHTTP10(true);
+  h.setTimeout(10000);
+  h.addHeader("User-Agent", "OttoSensor");
+  String api = String("https://api.github.com/repos/") + UPDATE_REPO + "/releases/latest";
+  if (!h.begin(secure, api))
+    return;
+  int code = h.GET();
+  if (code != 200)
+  {
+    Serial.printf("Update check failed, http %d\n", code);
+    h.end();
+    return;
+  }
+
+  StaticJsonDocument<256> filter;
+  filter["tag_name"] = true;
+  filter["assets"][0]["name"] = true;
+  filter["assets"][0]["browser_download_url"] = true;
+  DynamicJsonDocument doc(2048);
+  DeserializationError e = deserializeJson(doc, h.getStream(), DeserializationOption::Filter(filter));
+  h.end();
+  if (e)
+  {
+    Serial.println("Update check parse error");
+    return;
+  }
+
+  String tag = doc["tag_name"] | "";
+  String url;
+  for (JsonObject a : doc["assets"].as<JsonArray>())
+  {
+    if (String(a["name"] | "").endsWith(".bin"))
+    {
+      url = String(a["browser_download_url"] | "");
+      break;
+    }
+  }
+  if (tag.length() && url.length() && isNewerVersion(tag, firmwareVersion))
+  {
+    latestVersion = tag.startsWith("v") ? tag.substring(1) : tag;
+    latestUrl = url;
+    updateAvailable = true;
+    Serial.println("Update available: " + latestVersion);
+    publishOtaStatus("UPDATE_AVAILABLE");
+  }
+  else
+  {
+    updateAvailable = false;
+    Serial.println("Firmware is up to date");
+  }
+}
+
+void handleUpdatePage()
+{
+  String body = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
+  body += PORTAL_CSS;
+  body += "</head><body><div class='card'><h2>Otto Sensor firmware</h2><p>Installed: <b>";
+  body += firmwareVersion;
+  body += "</b></p>";
+  if (updateAvailable)
+  {
+    body += "<p>New version available: <b>" + htmlEscape(latestVersion) + "</b></p>"
+            "<form method='POST' action='/update'><button type='submit'>Install update</button></form>"
+            "<p>The device restarts when finished. Do not power it off.</p>";
+  }
+  else
+  {
+    body += "<p>You are up to date.</p>";
+  }
+  body += "</div></body></html>";
+  wifiServer.send(200, "text/html", body);
+}
+
+void handleUpdateInstall()
+{
+  if (updateAvailable)
+  {
+    otaVersion = latestVersion;
+    otaUrl = latestUrl;
+    otaMd5 = "";
+    otaPending = true;
+    wifiServer.send(200, "text/html", "<html><body><h3>Updating... the device will restart.</h3></body></html>");
+  }
+  else
+  {
+    wifiServer.sendHeader("Location", "/update");
+    wifiServer.send(303);
+  }
 }
 
 void initSensorCOZIR()
@@ -1095,9 +1238,27 @@ void DisplayMeasurementData(void)
   if (now - screenStarted >= 3000)
   {
     const bool wifiOffline = (WiFi.status() != WL_CONNECTED);
-    const uint8_t screenCount = wifiOffline ? 6 : 5;
+    const uint8_t screenCount = (wifiOffline ? 6 : 5) + (updateAvailable ? 1 : 0);
     screenIndex = (screenIndex + 1) % screenCount;
     screenStarted = now;
+  }
+
+  // The update notice is the last screen index (7) so it never shifts the others
+  const bool showUpdate = updateAvailable && screenIndex == ((WiFi.status() != WL_CONNECTED) ? 6 : 5);
+  if (showUpdate)
+  {
+    if (lastScreenIndex == 7)
+    {
+      return;
+    }
+    lastScreenIndex = 7;
+    Heltec.display->setFont(ArialMT_Plain_10);
+    Heltec.display->clear();
+    Heltec.display->drawString(0, 0, "Update " + latestVersion);
+    Heltec.display->drawString(0, 10, "Hold PRG to");
+    Heltec.display->drawString(0, 20, "install");
+    Heltec.display->display();
+    return;
   }
 
   // Draw ONLY once when transitioning to a new screen.
@@ -1396,6 +1557,30 @@ void loop()
     if (otaPending)
     {
       runOta();
+    }
+    static uint32_t lastUpdateCheck = 0;
+    if (updateCheckRequested || millis() - lastUpdateCheck > 6UL * 3600UL * 1000UL)
+    {
+      lastUpdateCheck = millis();
+      checkForUpdate();
+    }
+    // PRG button (GPIO0, active low) held ~1 s installs the pending update
+    static uint32_t prgDown = 0;
+    if (updateAvailable && digitalRead(0) == LOW)
+    {
+      if (prgDown == 0) prgDown = millis();
+      if (millis() - prgDown > 1000)
+      {
+        prgDown = 0;
+        otaVersion = latestVersion;
+        otaUrl = latestUrl;
+        otaMd5 = "";
+        otaPending = true;
+      }
+    }
+    else
+    {
+      prgDown = 0;
     }
     if (publishRequested)
     {
