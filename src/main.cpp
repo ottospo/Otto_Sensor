@@ -22,6 +22,7 @@
 #endif
 #include <WebServer.h>
 #include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <Preferences.h>
 #include <esp_wifi.h>
 
@@ -31,7 +32,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.9";
+const char firmwareVersion[] = "1.0.10";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -161,6 +162,13 @@ TwoWire &I2C_APDS = I2C_SENSORS;
 void receivedCallback(char *topic, byte *payload, unsigned int length);
 void newDataCallback(const bme68xData data, const bsecOutputs outputs, const Bsec2 bsec);
 void startWiFiSetup();
+String mdnsHostName()
+{
+  String m = imei;
+  m.replace(":", "");
+  m.toLowerCase();
+  return "ottosensor-" + m.substring(m.length() - 6);
+}
 static bool isNewerVersion(String candidate, String current);
 void handleUpdatePage();
 void handleUpdateInstall();
@@ -659,6 +667,11 @@ void setup_network()
     wifiServer.on("/update", HTTP_POST, handleUpdateInstall);
     wifiServer.begin();
     Serial.println("Web configuration server started on local IP");
+    if (MDNS.begin(mdnsHostName().c_str()))
+    {
+      MDNS.addService("http", "tcp", 80);
+      Serial.println("mDNS: http://" + mdnsHostName() + ".local");
+    }
   }
   else
   {
@@ -763,9 +776,12 @@ void receivedCallback(char *topic, byte *payload, unsigned int length)
 
 void publishOtaStatus(const char *status, int percent = -1)
 {
-  char buf[160];
-  snprintf(buf, sizeof(buf), "{\"imei\":\"%s\",\"state\":\"%s\",\"fw_version\":\"%s\",\"progress\":%d}",
-           imei.c_str(), status, firmwareVersion, percent);
+  char buf[300];
+  String host = mdnsHostName();
+  snprintf(buf, sizeof(buf),
+           "{\"imei\":\"%s\",\"state\":\"%s\",\"fw_version\":\"%s\",\"progress\":%d,\"new_version\":\"%s\",\"ip\":\"%s\",\"url\":\"http://%s.local/update\",\"url_ip\":\"http://%s/update\"}",
+           imei.c_str(), status, firmwareVersion, percent, latestVersion.c_str(),
+           WiFi.localIP().toString().c_str(), host.c_str(), WiFi.localIP().toString().c_str());
   client.publish(MQTT_PUB_TOPIC_DEVICE, buf);
   client.loop();
 }
