@@ -38,7 +38,7 @@ def on_message(client, userdata, msg):
     if key in opened:
         return
     opened.add(key)
-    url = data.get("url_ip") or data.get("url")
+    url = data.get("url") or data.get("url_ip")
     print(f"Update {data.get('new_version')} available for {data.get('imei')}: {url}")
     webbrowser.open(url)
 

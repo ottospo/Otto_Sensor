@@ -32,7 +32,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.11";
+const char firmwareVersion[] = "1.0.12";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -172,6 +172,7 @@ String mdnsHostName()
 static bool isNewerVersion(String candidate, String current);
 void handleUpdatePage();
 void handleUpdateInstall();
+void handleUpdateStatus();
 
 void get_imei()
 {
@@ -665,6 +666,7 @@ void setup_network()
     wifiServer.on("/save", HTTP_POST, handleWiFiSave);
     wifiServer.on("/update", HTTP_GET, handleUpdatePage);
     wifiServer.on("/update", HTTP_POST, handleUpdateInstall);
+    wifiServer.on("/update/status", HTTP_GET, handleUpdateStatus);
     wifiServer.begin();
     Serial.println("Web configuration server started on local IP");
     if (MDNS.begin(mdnsHostName().c_str()))
@@ -786,9 +788,15 @@ void publishOtaStatus(const char *status, int percent = -1)
   client.loop();
 }
 
+static int otaPercent = 0;
+static const char *otaState = "idle"; // idle, running, done, failed
+static String otaError;
+
 void otaProgress(int percent)
 {
   wdt.reset();
+  otaPercent = percent;
+  wifiServer.handleClient(); // keep the browser progress page responsive during the download
   static int lastShown = -1;
   if (percent / 5 == lastShown)
     return;
@@ -806,15 +814,27 @@ void runOta()
 {
   otaPending = false;
   Serial.println("Starting OTA to " + otaVersion);
+  otaPercent = 0;
+  otaError = "";
+  otaState = "running";
   publishOtaStatus("OTA_START", 0);
   String err = firmware_ota(otaUrl, otaMd5, otaProgress);
   if (err.length() == 0)
   {
+    otaPercent = 100;
+    otaState = "done";
     publishOtaStatus("OTA_OK", 100);
-    delay(500);
+    // Give the browser time to fetch the "done" status before restarting
+    for (int i = 0; i < 30; i++)
+    {
+      wifiServer.handleClient();
+      delay(100);
+    }
     ESP.restart();
   }
   Serial.println("OTA failed: " + err);
+  otaError = err;
+  otaState = "failed";
   publishOtaStatus("OTA_FAILED");
 }
 
@@ -920,6 +940,14 @@ void handleUpdatePage()
   wifiServer.send(200, "text/html", body);
 }
 
+void handleUpdateStatus()
+{
+  String json = String("{\"state\":\"") + otaState + "\",\"percent\":" + otaPercent +
+                ",\"error\":\"" + htmlEscape(otaError) + "\"}";
+  wifiServer.sendHeader("Cache-Control", "no-store");
+  wifiServer.send(200, "application/json", json);
+}
+
 void handleUpdateInstall()
 {
   if (updateAvailable)
@@ -928,7 +956,36 @@ void handleUpdateInstall()
     otaUrl = latestUrl;
     otaMd5 = "";
     otaPending = true;
-    wifiServer.send(200, "text/html", "<html><body><h3>Updating... the device will restart.</h3></body></html>");
+    otaState = "running";
+    otaPercent = 0;
+    otaError = "";
+    String body = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
+    body += PORTAL_CSS;
+    body += "<style>.bar{height:14px;background:#e3e6ea;border-radius:7px;overflow:hidden;margin:16px 0 8px}"
+            ".fill{height:100%;width:0;background:#2e7d32;transition:width .4s}</style>"
+            "</head><body><div class='card'><h2>Updating firmware</h2>"
+            "<p id='msg'>Downloading update...</p>"
+            "<div class='bar'><div class='fill' id='f'></div></div>"
+            "<p id='pct'>0%</p>"
+            "<p>Do not power off the device. It will restart when finished.</p></div>"
+            "<script>"
+            "var f=document.getElementById('f'),m=document.getElementById('msg'),p=document.getElementById('pct'),"
+            "restarting=false,fails=0;"
+            "function setP(v){f.style.width=v+'%';p.textContent=v+'%';}"
+            "function tick(){fetch('/update/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){"
+            "fails=0;"
+            "if(restarting){location.href='/update';return;}"
+            "if(s.state=='failed'){m.textContent='Update failed: '+s.error;f.style.background='#c62828';return;}"
+            "setP(s.percent);"
+            "if(s.state=='done'){m.textContent='Update complete. The device is restarting...';restarting=true;}"
+            "else if(s.state=='idle'){location.href='/update';return;}"
+            "setTimeout(tick,restarting?2000:700);"
+            "}).catch(function(){"
+            "if(restarting||++fails>3){restarting=true;setP(100);m.textContent='Update complete. The device is restarting...';}"
+            "setTimeout(tick,2000);});}"
+            "tick();"
+            "</script></body></html>";
+    wifiServer.send(200, "text/html", body);
   }
   else
   {
