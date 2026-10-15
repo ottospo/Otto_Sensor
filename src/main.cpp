@@ -936,7 +936,9 @@ void handleUpdatePage()
   {
     body += "<p>You are up to date.</p>";
   }
-  body += "</div></body></html>";
+  // Remember where the user came from (e.g. a dashboard) so the progress page can return there
+  body += "</div><script>if(document.referrer&&document.referrer.indexOf(location.host)<0)"
+          "sessionStorage.setItem('otoRet',document.referrer);</script></body></html>";
   wifiServer.send(200, "text/html", body);
 }
 
@@ -972,13 +974,17 @@ void handleUpdateInstall()
             "var f=document.getElementById('f'),m=document.getElementById('msg'),p=document.getElementById('pct'),"
             "restarting=false,fails=0;"
             "function setP(v){f.style.width=v+'%';p.textContent=v+'%';}"
+            "function finish(){setP(100);m.textContent='Update installed. The device has restarted.';"
+            "var r=sessionStorage.getItem('otoRet');"
+            "if(r){var a=document.createElement('a');a.href=r;a.textContent='Return to dashboard';"
+            "a.style.cssText='display:block;margin-top:12px';document.querySelector('.card').appendChild(a);}}"
             "function tick(){fetch('/update/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){"
             "fails=0;"
-            "if(restarting){location.href='/update';return;}"
+            "if(restarting){finish();return;}"
             "if(s.state=='failed'){m.textContent='Update failed: '+s.error;f.style.background='#c62828';return;}"
             "setP(s.percent);"
             "if(s.state=='done'){m.textContent='Update complete. The device is restarting...';restarting=true;}"
-            "else if(s.state=='idle'){location.href='/update';return;}"
+            "else if(s.state=='idle'){finish();return;}"
             "setTimeout(tick,restarting?2000:700);"
             "}).catch(function(){"
             "if(restarting||++fails>3){restarting=true;setP(100);m.textContent='Update complete. The device is restarting...';}"
