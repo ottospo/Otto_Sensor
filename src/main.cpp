@@ -1,4 +1,4 @@
-#include <WiFi.h>
+﻿#include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <time.h>
@@ -32,7 +32,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.12";
+const char firmwareVersion[] = "1.0.13";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -62,8 +62,8 @@ unsigned long buzzerStartTime = 0;
 const unsigned long buzzerDuration = 3000; // 3 seconds
 
 /* BME680 measured data */
-float tf_BME;   // Temperature, °F
-float tc_BME;   // Temperature, °C
+float tf_BME;   // Temperature, Â°F
+float tc_BME;   // Temperature, Â°C
 float rh_BME;   // Relative humidity, %
 float ap_BME;   // Atmospheric pressure
 float alt_BME;  // Calculated altitude
@@ -105,34 +105,17 @@ bool wifiSetupMode = false;
 
 #define HOSTNAME "OttoSensors"
 
-String mqttHost = "d8ef6c1c.ala.us-east-1.emqxsl.com";
+// AWS IoT Core (mutual TLS). Endpoint comes from the AWS_IOT_ENDPOINT build flag;
+// the root CA, device certificate and private key are embedded from certs/.
+#ifndef AWS_IOT_ENDPOINT
+#error "Define AWS_IOT_ENDPOINT in platformio.ini"
+#endif
+String mqttHost = AWS_IOT_ENDPOINT;
 int mqttPort = 8883;
-String mqttUser = "Otto_Sponring";
-String mqttPass = "";
 
-const char *local_root_ca =
-    "-----BEGIN CERTIFICATE-----\n"
-  "MIIDjjCCAnagAwIBAgIQAzrx5qcRqaC7KGSxHQn65TANBgkqhkiG9w0BAQsFADBh\n"
-  "MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3\n"
-  "d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBH\n"
-  "MjAeFw0xMzA4MDExMjAwMDBaFw0zODAxMTUxMjAwMDBaMGExCzAJBgNVBAYTAlVT\n"
-  "MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j\n"
-  "b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IEcyMIIBIjANBgkqhkiG\n"
-  "9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuzfNNNx7a8myaJCtSnX/RrohCgiN9RlUyfuI\n"
-  "2/Ou8jqJkTx65qsGGmvPrC3oXgkkRLpimn7Wo6h+4FR1IAWsULecYxpsMNzaHxmx\n"
-  "1x7e/dfgy5SDN67sH0NO3Xss0r0upS/kqbitOtSZpLYl6ZtrAGCSYP9PIUkY92eQ\n"
-  "q2EGnI/yuum06ZIya7XzV+hdG82MHauVBJVJ8zUtluNJbd134/tJS7SsVQepj5Wz\n"
-  "tCO7TG1F8PapspUwtP1MVYwnSlcUfIKdzXOS0xZKBgyMUNGPHgm+F6HmIcr9g+UQ\n"
-  "vIOlCsRnKPZzFBQ9RnbDhxSJITRNrw9FDKZJobq7nMWxM4MphQIDAQABo0IwQDAP\n"
-  "BgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBhjAdBgNVHQ4EFgQUTiJUIBiV\n"
-  "5uNu5g/6+rkS7QYXjzkwDQYJKoZIhvcNAQELBQADggEBAGBnKJRvDkhj6zHd6mcY\n"
-  "1Yl9PMWLSn/pvtsrF9+wX3N3KjITOYFnQoQj8kVnNeyIv/iPsGEMNKSuIEyExtv4\n"
-  "NeF22d+mQrvHRAiGfzZ0JFrabA0UWTW98kndth/Jsw1HKj2ZL7tcu7XUIOGZX1NG\n"
-  "Fdtom/DzMNU+MeKNhJ7jitralj41E6Vf8PlwUHBHQRFXGU7Aj64GxJUTFy8bJZ91\n"
-  "8rGOmaFvE7FBcf6IKshPECBV1/MUReXgRPTqh5Uykw7+U0b6LJ3/iyK5S9kJRaTe\n"
-  "pLiaWN0bfVKfjllDiIGknibVb63dDcY3fe0Dkhvld1927jyNxF1WW6LZZm6zNTfl\n"
-  "MrY=\n"
-  "-----END CERTIFICATE-----";
+extern const char aws_root_ca_start[] asm("_binary_certs_AmazonRootCA1_pem_start");
+extern const char aws_device_cert_start[] asm("_binary_certs_device_cert_pem_start");
+extern const char aws_device_key_start[] asm("_binary_certs_device_private_key_start");
 
 char MQTT_SUB_TOPIC[100];
 char MQTT_PUB_TOPIC[100];
@@ -186,21 +169,21 @@ void mqtt_connect()
   snprintf(
     MQTT_SUB_TOPIC,
     sizeof(MQTT_SUB_TOPIC),
-    "/ottosensors-dev/device/%s/command",
+    "ottosensors/device/%s/command",
     imei.c_str()
 );
 
 snprintf(
     MQTT_PUB_TOPIC,
     sizeof(MQTT_PUB_TOPIC),
-    "/ottosensors-dev/device/%s/update",
+    "ottosensors/device/%s/update",
     imei.c_str()
 );
 
 snprintf(
     MQTT_PUB_TOPIC_DEVICE,
     sizeof(MQTT_PUB_TOPIC_DEVICE),
-    "/ottosensors-dev/device/%s/state",
+    "ottosensors/device/%s/state",
     imei.c_str()
 );
 
@@ -212,12 +195,6 @@ snprintf(
     "OttoSensor-%s",
     imei.c_str()
 );
-  if (mqttPass.length() == 0)
-  {
-    Serial.println("Skipping MQTT connection: No MQTT password configured");
-    return;
-  }
-
   int retryCount = 0;
   while (!client.connected() && WiFi.status() == WL_CONNECTED)
   {
@@ -234,13 +211,13 @@ snprintf(
     serializeJson(ottoDataObj, jsonBuffer);
 
     Serial.println(jsonBuffer);   
-    Serial.print("Attempting MQTT connection as: ");
-    Serial.println(mqttUser);
+    Serial.print("Attempting AWS IoT connection as: ");
+    Serial.println(mqttClientId);
 
     if (client.connect(
           mqttClientId,
-          mqttUser.c_str(),
-          mqttPass.c_str(),
+          nullptr,
+          nullptr,
           MQTT_PUB_TOPIC_DEVICE,
           1,
           false,
@@ -459,8 +436,7 @@ void scanNetworksForPortal()
 void handleWiFiSetupPage()
 {
   Serial.println("*** HTTP REQUEST RECEIVED ***");
-  String currentMqttUser = mqttUser.length() > 0 ? htmlEscape(mqttUser) : "Otto_Sponring";
-  String currentMqttHost = mqttHost.length() > 0 ? htmlEscape(mqttHost) : "d8ef6c1c.ala.us-east-1.emqxsl.com";
+  String currentMqttHost = mqttHost.length() > 0 ? htmlEscape(mqttHost) : String(AWS_IOT_ENDPOINT);
 
   String html =
     "<!DOCTYPE html>"
@@ -473,7 +449,7 @@ void handleWiFiSetupPage()
     "<body>"
     "<div class='card'>"
     "<h2>OttoSensor Setup</h2>"
-    "<p class='sub'>Configure Wi-Fi and MQTT broker credentials.</p>"
+    "<p class='sub'>Configure Wi-Fi and the AWS IoT endpoint.</p>"
     "<p class='sub'><b>Note:</b> Connect to Gateway Port at 2.4GHz</p>"
     "<form action='/save' method='POST'>"
     "<label for='ssidSelect'>WiFi network (gateway)</label>"
@@ -486,26 +462,20 @@ void handleWiFiSetupPage()
     "<input id='pw' type='password' name='password' placeholder='Enter Wi-Fi password' autocomplete='off'>"
     "<label class='show-pw'><input type='checkbox' id='togglePw'>Show Wi-Fi password</label>"
     "<hr>"
-    "<h3>MQTT Broker</h3>"
-    "<p class='sub' style='margin-bottom:10px;'>Credentials to connect to your MQTT server.</p>"
-    "<label for='mHost'>Broker Host</label>"
+    "<h3>AWS IoT Core</h3>"
+    "<p class='sub' style='margin-bottom:10px;'>Device certificate is built into the firmware.</p>"
+    "<label for='mHost'>AWS IoT Endpoint</label>"
     "<input id='mHost' type='text' name='mqtt_host' value='" + currentMqttHost + "' autocapitalize='none' autocomplete='off'>"
-    "<label for='mUser'>MQTT Username</label>"
-    "<input id='mUser' type='text' name='mqtt_user' value='" + currentMqttUser + "' required autocapitalize='none' autocomplete='off'>"
-    "<label for='mPw'>MQTT Password</label>"
-    "<input id='mPw' type='password' name='mqtt_pass' placeholder='Enter MQTT password' autocomplete='off'>"
-    "<label class='show-pw'><input type='checkbox' id='toggleMqttPw'>Show MQTT password</label>"
     "<button type='submit'>Save &amp; Connect</button>"
     "</form>"
     "<p style='text-align:center'><a href='/update'>Check firmware update</a></p>"
     "</div>"
     "<script>"
-    "var s=document.getElementById('ssidSelect'),t=document.getElementById('customSsid'),p=document.getElementById('pw'),ck=document.getElementById('togglePw'),mp=document.getElementById('mPw'),mck=document.getElementById('toggleMqttPw');"
+    "var s=document.getElementById('ssidSelect'),t=document.getElementById('customSsid'),p=document.getElementById('pw'),ck=document.getElementById('togglePw');"
     "function sync(){if(s.value=='__other'){t.style.display='block';t.required=true;t.focus();}"
     "else{t.value='';t.style.display='none';t.required=false;}}"
     "s.onchange=sync;sync();"
     "ck.onchange=function(){p.type=ck.checked?'text':'password';};"
-    "mck.onchange=function(){mp.type=mck.checked?'text':'password';};"
     "</script>"
     "</body>"
     "</html>";
@@ -587,8 +557,6 @@ void setup_network()
   preferences.begin("mqtt", false);
   mqttHost = preferences.getString("host", mqttHost);
   mqttPort = preferences.getInt("port", mqttPort);
-  mqttUser = preferences.getString("user", mqttUser);
-  mqttPass = preferences.getString("pass", "");
   preferences.end();
 
   // TEMPORARY fallback to the hard-coded credentials.
@@ -683,8 +651,12 @@ void setup_network()
     startWiFiSetup();
   }
 
-  net.setCACert(local_root_ca);
-  client.setServer(mqttHost.c_str(), mqttPort);
+  net.setCACert(aws_root_ca_start);
+  net.setCertificate(aws_device_cert_start);
+  net.setPrivateKey(aws_device_key_start);
+  //client.setServer(mqttHost.c_str(), mqttPort);
+  //client.setCallback(receivedCallback);
+  client.setServer("a2y7jhiel7juf2-ats.iot.us-west-2.amazonaws.com", 8883);
   client.setCallback(receivedCallback);
 }
 
@@ -961,36 +933,135 @@ void handleUpdateInstall()
     otaState = "running";
     otaPercent = 0;
     otaError = "";
-    String body = "<html><head><meta name='viewport' content='width=device-width,initial-scale=1'>";
+
+    String body =
+      "<html><head>"
+      "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+
     body += PORTAL_CSS;
-    body += "<style>.bar{height:14px;background:#e3e6ea;border-radius:7px;overflow:hidden;margin:16px 0 8px}"
-            ".fill{height:100%;width:0;background:#2e7d32;transition:width .4s}</style>"
-            "</head><body><div class='card'><h2>Updating firmware</h2>"
-            "<p id='msg'>Downloading update...</p>"
-            "<div class='bar'><div class='fill' id='f'></div></div>"
-            "<p id='pct'>0%</p>"
-            "<p>Do not power off the device. It will restart when finished.</p></div>"
-            "<script>"
-            "var f=document.getElementById('f'),m=document.getElementById('msg'),p=document.getElementById('pct'),"
-            "restarting=false,fails=0;"
-            "function setP(v){f.style.width=v+'%';p.textContent=v+'%';}"
-            "function finish(){setP(100);m.textContent='Update installed. The device has restarted.';"
-            "var r=sessionStorage.getItem('otoRet');"
-            "if(r){var a=document.createElement('a');a.href=r;a.textContent='Return to dashboard';"
-            "a.style.cssText='display:block;margin-top:12px';document.querySelector('.card').appendChild(a);}}"
-            "function tick(){fetch('/update/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(s){"
-            "fails=0;"
-            "if(restarting){finish();return;}"
-            "if(s.state=='failed'){m.textContent='Update failed: '+s.error;f.style.background='#c62828';return;}"
-            "setP(s.percent);"
-            "if(s.state=='done'){m.textContent='Update complete. The device is restarting...';restarting=true;}"
-            "else if(s.state=='idle'){finish();return;}"
-            "setTimeout(tick,restarting?2000:700);"
-            "}).catch(function(){"
-            "if(restarting||++fails>3){restarting=true;setP(100);m.textContent='Update complete. The device is restarting...';}"
-            "setTimeout(tick,2000);});}"
-            "tick();"
-            "</script></body></html>";
+
+    body +=
+      "<style>"
+      ".status{text-align:center;margin-bottom:22px}"
+      ".version{font-size:18px;margin:18px 0}"
+      ".version strong{font-size:22px}"
+      ".bar{height:18px;background:#e3e6ea;border-radius:10px;"
+      "overflow:hidden;margin:22px 0 10px}"
+      ".fill{height:100%;width:0;background:#2e7d32;"
+      "transition:width .4s ease}"
+      ".pct{font-size:28px;font-weight:700;margin:8px 0}"
+      ".note{margin-top:24px;font-size:15px;opacity:.8}"
+      ".success{font-size:22px;font-weight:700;color:#2e7d32}"
+      ".return{display:inline-block;margin-top:20px;padding:12px 22px;"
+      "background:#2878e5;color:white;text-decoration:none;"
+      "border-radius:8px;font-weight:600}"
+      "</style>"
+      "</head><body>"
+
+      "<div class='card'>"
+
+      "<div class='status'>"
+      "<h2>Otto Sensor Firmware Update</h2>"
+
+      "<div class='version'>"
+      "Installing <strong>" + otaVersion + "</strong>"
+      "</div>"
+
+      "<p id='msg'>Downloading firmware...</p>"
+
+      "<div class='bar'>"
+      "<div class='fill' id='f'></div>"
+      "</div>"
+
+      "<div class='pct' id='pct'>0%</div>"
+
+      "<p class='note'>"
+      "Keep the sensor powered on and connected to Wi-Fi.<br>"
+      "The sensor will restart automatically when the update is complete."
+      "</p>"
+
+      "</div>"
+      "</div>"
+
+      "<script>"
+      "var f=document.getElementById('f'),"
+      "m=document.getElementById('msg'),"
+      "p=document.getElementById('pct'),"
+      "restarting=false,fails=0;"
+
+      "function setP(v){"
+      "if(v<0)v=0;"
+      "if(v>100)v=100;"
+      "f.style.width=v+'%';"
+      "p.textContent=v+'%';"
+      "}"
+
+      "function finish(){"
+      "setP(100);"
+      "m.className='success';"
+      "m.textContent='Update successful! Sensor restarted.';"
+      "p.textContent='100%';"
+
+      "var r=sessionStorage.getItem('otoRet');"
+      "if(r){"
+      "var a=document.createElement('a');"
+      "a.href=r;"
+      "a.textContent='Return to dashboard';"
+      "a.className='return';"
+      "document.querySelector('.status').appendChild(a);"
+      "}"
+      "}"
+
+      "function tick(){"
+      "fetch('/update/status',{cache:'no-store'})"
+      ".then(function(r){return r.json();})"
+      ".then(function(s){"
+
+      "fails=0;"
+
+      "if(restarting){"
+      "finish();"
+      "return;"
+      "}"
+
+      "if(s.state=='failed'){"
+      "m.textContent='Update failed: '+s.error;"
+      "m.style.color='#c62828';"
+      "f.style.background='#c62828';"
+      "return;"
+      "}"
+
+      "setP(s.percent);"
+
+      "if(s.state=='done'){"
+      "setP(100);"
+      "m.textContent='Firmware installed. Restarting sensor...';"
+      "restarting=true;"
+      "}"
+      "else if(s.state=='idle'){"
+      "finish();"
+      "return;"
+      "}"
+      "else{"
+      "m.textContent='Installing firmware...';"
+      "}"
+
+      "setTimeout(tick,restarting?2000:700);"
+      "})"
+      ".catch(function(){"
+      "if(restarting||++fails>3){"
+      "restarting=true;"
+      "setP(100);"
+      "m.textContent='Firmware installed. Waiting for sensor to restart...';"
+      "}"
+      "setTimeout(tick,2000);"
+      "});"
+      "}"
+
+      "tick();"
+      "</script>"
+      "</body></html>";
+
     wifiServer.send(200, "text/html", body);
   }
   else
@@ -1497,15 +1568,7 @@ void setup()
   setup_network();
   if (WiFi.status() == WL_CONNECTED)
   {
-    if (mqttPass.length() > 0)
-    {
-      mqtt_connect();
-    }
-    else
-    {
-      Serial.println("No saved MQTT credentials - starting setup AP");
-      startWiFiSetup();
-    }
+    mqtt_connect();
   }
   else
   {
@@ -1534,8 +1597,8 @@ void populateMeasurementJson(JsonDocument &document, const char *measurementImei
   document["green"] = green_light;
   document["blue"] = blue_light;
   document["clear"] = ambient_light;
-  document["pressure"] = ap_BME;
-  document["altitude"] = alt_BME;
+  document["pressure"] = roundf(ap_BME * 10.0f) / 10.0f;
+  document["altitude"] = roundf(alt_BME * 10.0f) / 10.0f;
   document["voltage"] = InVoltage;
   document["pwm_freq"] = pwm_freq;
   document["pwm_duty"] = static_cast<unsigned int>(pwm_duty);

@@ -7,3 +7,5 @@ build.log
 ~*
 *.tmp
 firmware.bin
+
+certs/
