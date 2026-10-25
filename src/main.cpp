@@ -32,7 +32,7 @@ String wifiSSID;
 String wifiPass;
 
 
-const char firmwareVersion[] = "1.0.13";
+const char firmwareVersion[] = "1.0.14";
 unsigned long lastSensorPublish = 0;
 
 Watchdog wdt;
@@ -110,8 +110,7 @@ bool wifiSetupMode = false;
 #ifndef AWS_IOT_ENDPOINT
 #error "Define AWS_IOT_ENDPOINT in platformio.ini"
 #endif
-String mqttHost = AWS_IOT_ENDPOINT;
-int mqttPort = 8883;
+constexpr uint16_t mqttPort = 8883;
 
 extern const char aws_root_ca_start[] asm("_binary_certs_AmazonRootCA1_pem_start");
 extern const char aws_device_cert_start[] asm("_binary_certs_device_cert_pem_start");
@@ -314,12 +313,6 @@ void handleWiFiSave()
   }
   String newPass = wifiServer.hasArg("password") ? wifiServer.arg("password") : "";
 
-  String newMqttUser = wifiServer.hasArg("mqtt_user") ? wifiServer.arg("mqtt_user") : "";
-  newMqttUser.trim();
-  String newMqttPass = wifiServer.hasArg("mqtt_pass") ? wifiServer.arg("mqtt_pass") : "";
-  String newMqttHost = wifiServer.hasArg("mqtt_host") ? wifiServer.arg("mqtt_host") : "";
-  newMqttHost.trim();
-
   // Save WiFi if valid SSID provided
   if (newSSID.length() > 0 && newSSID != "__other")
   {
@@ -336,28 +329,6 @@ void handleWiFiSave()
     }
     preferences.end();
   }
-
-  // Save MQTT credentials
-  preferences.begin("mqtt", false);
-  if (newMqttUser.length() > 0)
-  {
-    Serial.print("Saving MQTT Username: ");
-    Serial.println(newMqttUser);
-    preferences.putString("user", newMqttUser);
-  }
-  if (newMqttPass.length() > 0)
-  {
-    Serial.print("Saving MQTT password length: ");
-    Serial.println(newMqttPass.length());
-    preferences.putString("pass", newMqttPass);
-  }
-  if (newMqttHost.length() > 0)
-  {
-    Serial.print("Saving MQTT Broker Host: ");
-    Serial.println(newMqttHost);
-    preferences.putString("host", newMqttHost);
-  }
-  preferences.end();
 
   String html =
     "<!DOCTYPE html>"
@@ -376,11 +347,6 @@ void handleWiFiSave()
   {
     html += "<p class='ssid'>WiFi: " + htmlEscape(newSSID) + "</p>";
   }
-  if (newMqttUser.length() > 0)
-  {
-    html += "<p class='ssid'>MQTT User: " + htmlEscape(newMqttUser) + "</p>";
-  }
-
   html +=
     "<p class='note'>In case your computer does not automatically reconnect, please reconnect manually.</p>"
     "</div>"
@@ -436,7 +402,6 @@ void scanNetworksForPortal()
 void handleWiFiSetupPage()
 {
   Serial.println("*** HTTP REQUEST RECEIVED ***");
-  String currentMqttHost = mqttHost.length() > 0 ? htmlEscape(mqttHost) : String(AWS_IOT_ENDPOINT);
 
   String html =
     "<!DOCTYPE html>"
@@ -463,9 +428,7 @@ void handleWiFiSetupPage()
     "<label class='show-pw'><input type='checkbox' id='togglePw'>Show Wi-Fi password</label>"
     "<hr>"
     "<h3>AWS IoT Core</h3>"
-    "<p class='sub' style='margin-bottom:10px;'>Device certificate is built into the firmware.</p>"
-    "<label for='mHost'>AWS IoT Endpoint</label>"
-    "<input id='mHost' type='text' name='mqtt_host' value='" + currentMqttHost + "' autocapitalize='none' autocomplete='off'>"
+    "<p class='sub' style='margin-bottom:10px;'>The AWS IoT endpoint and device certificate are fixed in this firmware.</p>"
     "<button type='submit'>Save &amp; Connect</button>"
     "</form>"
     "<p style='text-align:center'><a href='/update'>Check firmware update</a></p>"
@@ -551,13 +514,6 @@ void setup_network()
   wifiSSID = preferences.getString("ssid", "");
   wifiPass = preferences.getString("pass", "");
 
-  preferences.end();
-
-  // Read MQTT credentials saved by the setup portal
-  preferences.begin("mqtt", false);
- // mqttHost = preferences.getString("host", mqttHost); 
- mqttHost = String(AWS_IOT_ENDPOINT);
-  mqttPort = preferences.getInt("port", mqttPort);
   preferences.end();
 
   // TEMPORARY fallback to the hard-coded credentials.
@@ -655,9 +611,9 @@ void setup_network()
   net.setCACert(aws_root_ca_start);
   net.setCertificate(aws_device_cert_start);
   net.setPrivateKey(aws_device_key_start);
-  //client.setServer(mqttHost.c_str(), mqttPort);
-  //client.setCallback(receivedCallback);
-  client.setServer("a2y7jhiel7juf2-ats.iot.us-west-2.amazonaws.com", 8883);
+  Serial.print("Connecting to AWS IoT endpoint: ");
+  Serial.println(AWS_IOT_ENDPOINT);
+  client.setServer(AWS_IOT_ENDPOINT, mqttPort);
   client.setCallback(receivedCallback);
 }
 
