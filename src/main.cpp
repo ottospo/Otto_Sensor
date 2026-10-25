@@ -555,7 +555,8 @@ void setup_network()
 
   // Read MQTT credentials saved by the setup portal
   preferences.begin("mqtt", false);
-  mqttHost = preferences.getString("host", mqttHost);
+ // mqttHost = preferences.getString("host", mqttHost); 
+ mqttHost = String(AWS_IOT_ENDPOINT);
   mqttPort = preferences.getInt("port", mqttPort);
   preferences.end();
 
@@ -774,6 +775,7 @@ void otaProgress(int percent)
     return;
   lastShown = percent / 5;
   Serial.printf("OTA %d%%\n", percent);
+  publishOtaStatus("OTA_PROGRESS", percent);
   Heltec.display->clear();
   Heltec.display->setFont(ArialMT_Plain_10);
   Heltec.display->drawString(0, 0, "OTA update");
@@ -888,6 +890,7 @@ void checkForUpdate()
   {
     updateAvailable = false;
     Serial.println("Firmware is up to date");
+    publishOtaStatus("UP_TO_DATE");
   }
 }
 
