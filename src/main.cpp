@@ -1558,7 +1558,7 @@ void populateMeasurementJson(JsonDocument &document, const char *measurementImei
   document["clear"] = ambient_light;
   document["pressure"] = roundf(ap_BME * 10.0f) / 10.0f;
   document["altitude"] = roundf(alt_BME * 10.0f) / 10.0f;
-  document["voltage"] = InVoltage;
+  document["voltage"] = roundf(InVoltage * 1000.0f) / 1000.0f;
   document["pwm_freq"] = pwm_freq;
   document["pwm_duty"] = static_cast<unsigned int>(pwm_duty);
   document["power"] = static_cast<int>(power);
