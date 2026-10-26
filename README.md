@@ -9,7 +9,7 @@ On first boot (or when Wi-Fi credentials are missing or the connection fails) th
 Attach `firmware.bin` to a GitHub release, then publish to `ottosensors/device/<imei>/command` in AWS IoT Core:
 
 ```json
-{"type":"ota","fw_version":"1.0.14","url":"https://github.com/ottospo/Otto_Sensor/releases/download/1.0.14/firmware.bin","md5":"<md5>"}
+{"type":"ota","fw_version":"1.0.15","url":"https://github.com/ottospo/Otto_Sensor/releases/download/1.0.15/firmware.bin","md5":"<md5>"}
 ```
 
 Build: `platformio run`
