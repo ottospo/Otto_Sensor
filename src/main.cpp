@@ -34,6 +34,7 @@ String wifiPass;
 
 const char firmwareVersion[] = "1.0.15";
 unsigned long lastSensorPublish = 0;
+uint32_t pagerTxAt = 0;
 
 Watchdog wdt;
 HTTPClient http;
@@ -1424,7 +1425,12 @@ void DisplayMeasurementData(void)
   }
 
   Heltec.display->setFont(ArialMT_Plain_10);
-  Heltec.display->clear();
+  // Erase only the three text rows instead of clear()ing the whole frame:
+  // clear() marks the entire buffer dirty, so display() pushes a full frame
+  // and the screen visibly blanks for a few ms on every rotation (flicker).
+  Heltec.display->setColor(BLACK);
+  Heltec.display->fillRect(0, 0, 64, 32);
+  Heltec.display->setColor(WHITE);
   if (screenIndex == 1)
   {
     Heltec.display->drawString(0, 0, s1);
@@ -1590,7 +1596,7 @@ void get_data_to_send()
   populateMeasurementJson(ottoDataObj, imei.c_str());
 
   serializeJson(ottoDataObj, jsonBuffer);
-  Serial.println(jsonBuffer);
+  DBG_PRINTLN(jsonBuffer);
   client.publish(MQTT_PUB_TOPIC, jsonBuffer);
 }
 
@@ -1693,7 +1699,9 @@ void loop()
     {
       get_data_to_send();
     }
-    sendCo2ToPager();
+    // LoRa TX 1 s after the MQTT publish so the WiFi and LoRa current
+    // spikes don't coincide and sag the OLED supply (visible flicker)
+    pagerTxAt = now + 1000;
     lastSensorPublish = millis();
 
     if (!buzzerOn && co2_CZR >= 800) {
@@ -1701,6 +1709,12 @@ void loop()
       buzzerOn = true;
       buzzerStartTime = millis();
     }
+  }
+
+  if (pagerTxAt != 0 && (int32_t)(now - pagerTxAt) >= 0)
+  {
+    pagerTxAt = 0;
+    sendCo2ToPager();
   }
 
   if (buzzerOn && (millis() - buzzerStartTime >= buzzerDuration)) {
